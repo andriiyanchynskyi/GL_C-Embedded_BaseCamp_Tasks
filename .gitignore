@@ -1,0 +1,4 @@
+# eclipse specific gitignore
+.metadata/
+.settings/
+**/Debug/
