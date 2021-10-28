@@ -36,10 +36,10 @@
 #define SIGNAL_FREQ_MIN SIGNAL_FREQ_STEP
 #define SIGNAL_FREQ_MAX 100000
 #define DCYCLE_SW_STEP 5
-#define BASE_CLOCK_FREQ 16000000
-/* TIM4 is connected to APB1 bus, which has on F407 device 42MHz clock  		  */
-/* But, timer has internal PLL, which double this frequency for timer, up to 84MHz*/
-/* Our case is similar - base clock is 8000000 * 2 = 16000000Hz				  */
+#define BASE_CLOCK_FREQ 8000000
+/* TIM4 is connected to APB1 bus, which has on F407 device 42MHz clock  		     */
+/* But, timer has internal PLL, which double this frequency for timer, up to 84MHz   */
+/* But our case is not similar, check config file to see RCC.APB1Freq_Value=8000000  */
 #define CALC_TIM_PERIOD(b) (((BASE_CLOCK_FREQ) / (b)) - 1 )
 #define CALC_PULSE_LENGTH(a,b) ( (((a) * (b)) / 100) )
 /* USER CODE END PD */
