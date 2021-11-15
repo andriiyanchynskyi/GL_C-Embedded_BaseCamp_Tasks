@@ -23,7 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "pca9685_pwm.h"
-
+#include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,6 +51,13 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+uint8_t delayTime = 0;
+uint8_t dutyCycle = 0;
+uint8_t sleepMode = 0;
+uint8_t pwmChannelsState = 0;
+uint16_t pwmFrequency = 100;
+
+char rcvBuf;
 
 /* USER CODE END PV */
 
@@ -59,12 +67,170 @@ static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM3_Init(void);
+
 /* USER CODE BEGIN PFP */
+static void adjustDutyCycle(void);
+static void adjustDelayTime(void);
+static void adjustPwmFrequency(void);
+static void toggleAllPwmOutputs(void);
+static void toggleSleepMode(void);
+static void receiveUartStatus(void);
+static void transmitUartMessage(char terminalMessage[128]);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	// Pooling UART using Timer3 every 0.02 seconds
+	if (htim == &htim3 )
+	{
+
+		HAL_StatusTypeDef result = HAL_UART_Receive(&huart3, (uint8_t*)&rcvBuf, 1, 10);
+
+		if (result == HAL_OK)
+		{
+			switch (rcvBuf)
+			{
+			case '1':
+				adjustDutyCycle();
+				break;
+			case '3':
+				adjustDutyCycle();
+				break;
+			case '4':
+				adjustDelayTime();
+				break;
+			case '6':
+				adjustDelayTime();
+				break;
+			case '7':
+				adjustPwmFrequency();
+				break;
+			case '9':
+				adjustPwmFrequency();
+				break;
+			case '2':
+				toggleAllPwmOutputs();
+				break;
+			case '5':
+				toggleSleepMode();
+				break;
+			default:
+				HAL_UART_Transmit(&huart3, (uint8_t*) "Unrecognized key\r\n", 15 + 2, 10);
+				break;
+			}
+			receiveUartStatus();
+		}
+	}
+}
+
+void adjustDutyCycle(void)
+{
+	if (pwmChannelsState == 1)
+	{
+		if(rcvBuf == '1')
+		{
+			dutyCycle = (dutyCycle > 0) ? (dutyCycle - 1) : dutyCycle;
+			dutyCycle = (dutyCycle > (100 - delayTime)) ? (100 - delayTime) : dutyCycle;
+
+		}
+		else if (rcvBuf == '3')
+		{
+			dutyCycle = (dutyCycle < 100) ? (dutyCycle + 1) : dutyCycle;
+			dutyCycle = (dutyCycle > (100 - delayTime)) ? (100 - delayTime) : dutyCycle;
+		}
+
+	LED_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, delayTime, dutyCycle);
+	}
+}
+
+static void adjustDelayTime(void)
+{
+	if (pwmChannelsState == 1)
+	{
+		if(rcvBuf == '4')
+		{
+			delayTime = (delayTime > 0) ? (delayTime - 1) : delayTime;
+			delayTime = (delayTime > (100 - dutyCycle)) ? (100 - dutyCycle) : delayTime;
+
+		}
+		else if (rcvBuf == '6')
+		{
+			delayTime = (delayTime < 100) ? (delayTime + 1) : delayTime;
+			delayTime = (delayTime > (100 - dutyCycle)) ? (100 - dutyCycle) : delayTime;
+		}
+
+	LED_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, delayTime, dutyCycle);
+	}
+}
+
+static void adjustPwmFrequency(void)
+{
+
+	if(rcvBuf == '7')
+	{
+		pwmFrequency = (pwmFrequency > 24) ? (pwmFrequency - 1) : pwmFrequency;
+	}
+	else if (rcvBuf == '9')
+	{
+		pwmFrequency = (pwmFrequency < 1526) ? (pwmFrequency + 1) : pwmFrequency;
+	}
+
+	PWM_Frequency_Set(&hi2c1, PCA9685_PWM_LED_ID, pwmFrequency);
+
+}
+
+static void toggleAllPwmOutputs(void)
+{
+	if(pwmChannelsState == 0)
+	{
+		pwmChannelsState = 1;
+		LED_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, delayTime, dutyCycle);
+	}
+	else
+	{
+		pwmChannelsState = 0;
+		LED_Register_All_Off(&hi2c1, PCA9685_PWM_LED_ID);
+	}
+
+}
+
+static void toggleSleepMode(void)
+{
+	sleepMode = !sleepMode;
+
+	LED_Sleep_State(&hi2c1, PCA9685_PWM_LED_ID, sleepMode);
+
+}
+
+static void receiveUartStatus(void)
+{
+	/** the ASCII Escape character, value 0x1B.
+        the ASCII left square brace character, value 0x5B.
+      	  the ASCII character for numeral 2, value 0x32.
+        the ASCII character for the letter J, value 0x4A.
+        Esc[2J - erase terminal display
+ 	*/
+	static char tempStr[128];
+	uint8_t  eraseScreenArr[5] ={ 0x1B, 0x5B, 0x32, 0x4A };
+
+	HAL_UART_Transmit(&huart3, (uint8_t*) &eraseScreenArr, 4, 10);
+
+	transmitUartMessage("Duty cycle: Decrease/Increase 1/3 | Delay time: Decrease/Increase 4/6 | PWM Frequency: Decrease/Increase 7/9 |\r\nToggle all channels: 2 | Toggle sleep mode: 5\r\n");
+
+	snprintf(tempStr, sizeof(tempStr), "\r\nDuty Cycle: %u %%\r\nDelay time: %u %%\r\nPWM Frequency: %u Hz\r\nAll channels: %u\r\nSleep mode: %u\r\n",
+	(unsigned int)(dutyCycle), (unsigned int)(delayTime), (unsigned int)(pwmFrequency),(unsigned int)(pwmChannelsState),(unsigned int)(sleepMode));
+
+	transmitUartMessage(tempStr);
+}
+
+static void transmitUartMessage(char terminalMessage[128])
+{
+	HAL_UART_Transmit(&huart3, (uint8_t*) terminalMessage,  strlen(terminalMessage), 10);
+}
+
 
 /* USER CODE END 0 */
 
@@ -101,7 +267,8 @@ int main(void)
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   PWM_LED_Init(&hi2c1, PCA9685_PWM_LED_ID);
-
+  HAL_TIM_Base_Start_IT(&htim3);
+  receiveUartStatus();
   /* USER CODE END 2 */
 
   /* Infinite loop */
