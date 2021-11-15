@@ -58,9 +58,9 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define PWR_INT_BTN_Pin GPIO_PIN_0
-#define PWR_INT_BTN_GPIO_Port GPIOA
-#define PWR_INT_BTN_EXTI_IRQn EXTI0_IRQn
+#define BLUE_BTN_Pin GPIO_PIN_0
+#define BLUE_BTN_GPIO_Port GPIOA
+#define BLUE_BTN_EXTI_IRQn EXTI0_IRQn
 #define LED_GREEN_Pin GPIO_PIN_12
 #define LED_GREEN_GPIO_Port GPIOD
 #define LED_ORANGE_Pin GPIO_PIN_13
@@ -69,13 +69,21 @@ void Error_Handler(void);
 #define LED_RED_GPIO_Port GPIOD
 #define LED_BLUE_Pin GPIO_PIN_15
 #define LED_BLUE_GPIO_Port GPIOD
-#define UP_BTN_Pin GPIO_PIN_9
-#define UP_BTN_GPIO_Port GPIOC
-#define INT_BTN_Pin GPIO_PIN_15
-#define INT_BTN_GPIO_Port GPIOA
-#define INT_BTN_EXTI_IRQn EXTI15_10_IRQn
-#define DOWN_BTN_Pin GPIO_PIN_11
-#define DOWN_BTN_GPIO_Port GPIOC
+#define SWT4_BTN_Pin GPIO_PIN_6
+#define SWT4_BTN_GPIO_Port GPIOC
+#define SWT4_BTN_EXTI_IRQn EXTI9_5_IRQn
+#define SWT5_BTN_Pin GPIO_PIN_8
+#define SWT5_BTN_GPIO_Port GPIOC
+#define SWT5_BTN_EXTI_IRQn EXTI9_5_IRQn
+#define SWT3_BTN_Pin GPIO_PIN_9
+#define SWT3_BTN_GPIO_Port GPIOC
+#define SWT3_BTN_EXTI_IRQn EXTI9_5_IRQn
+#define SWT2_BTN_Pin GPIO_PIN_15
+#define SWT2_BTN_GPIO_Port GPIOA
+#define SWT2_BTN_EXTI_IRQn EXTI15_10_IRQn
+#define SWT1_BTN_Pin GPIO_PIN_11
+#define SWT1_BTN_GPIO_Port GPIOC
+#define SWT1_BTN_EXTI_IRQn EXTI15_10_IRQn
 /* USER CODE BEGIN Private defines */
 
 /* USER CODE END Private defines */

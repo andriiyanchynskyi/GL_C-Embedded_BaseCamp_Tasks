@@ -32,30 +32,39 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LED_DELAY_MAX (2000)
-#define LED_DELAY_MIN  (100)
-#define LED_DELAY_SWITCH (100)
+#define LED_DELAY_MAX 2000
+#define LED_DELAY_MIN  100
+#define LED_DELAY_STEP 100
+
+#define LED_NUMBER 4
+#define LED_SCHEME_LEN 6
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
+#define SET_LED_STATE(a, b) ((a & (1 << b)) )
 
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+ uint32_t ledPin[LED_NUMBER] = {LED_GREEN_Pin, LED_ORANGE_Pin, LED_RED_Pin, LED_BLUE_Pin};
 
- uint32_t ledPin[4] = {LED_GREEN_Pin, LED_ORANGE_Pin, LED_RED_Pin, LED_BLUE_Pin};
- uint32_t switchDelay = 1000;
- uint32_t delayPass = 0; // counter to check if delay passed
+ uint8_t  ledScheme[LED_NUMBER][LED_SCHEME_LEN] = { {0b0000,0b1111,0b0000,0b1111,0b0000,0b1111},
+		 	 	 	 	 	 	 	 	 	 	 	{0b0010,0b0100,0b0010,0b1001,0b0010,0b0100},
+													{0b1111,0b1000,0b0011,0b1111,0b0000,0b0111},
+													{0b1010,0b0101,0b1010,0b0101,0b1010,0b0101} };
 
- uint8_t upCheckBtn = 0;
- uint8_t downCheckBtn = 0;
- uint8_t saveUpBtnState = 0;
- uint8_t saveDownBtnState = 0;
+ uint8_t blinkStep = 0;
 
- uint8_t pwrLed;
+ uint32_t ledDelay = 1000;
+ uint32_t lastDelay = 0; // counter to check if delay passed
+
+ uint8_t ledState = 1;
+
+ uint8_t ledMode = 0;
 
 /* USER CODE END PV */
 
@@ -63,12 +72,60 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 /* USER CODE BEGIN PFP */
-
+static void blinkLed(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	switch(GPIO_Pin) {
+		case BLUE_BTN_Pin:
+			if (__HAL_GPIO_EXTI_GET_IT(BLUE_BTN_Pin) != SET)
+			{
+				ledState = !ledState;
+			}
+			break;
+		case SWT1_BTN_Pin:
+			ledDelay-= LED_DELAY_STEP;
+			if(ledDelay < LED_DELAY_MIN)
+				 ledDelay = LED_DELAY_MIN;
+			break;
+		case SWT3_BTN_Pin:
+			ledDelay+= LED_DELAY_STEP;
+			if(ledDelay > LED_DELAY_MAX)
+				 ledDelay = LED_DELAY_MAX;
+			break;
+		case SWT4_BTN_Pin:
+			ledMode = (ledMode < 3) ? (ledMode + 1) : ledMode;
+			break;
+		case SWT5_BTN_Pin:
+			ledMode = (ledMode > 0) ? (ledMode - 1) : ledMode;
+			break;
+		}
+}
+
+static void blinkLed(void)
+{
+	uint32_t getTick = HAL_GetTick();
+	if ((getTick - lastDelay) >= ledDelay)
+	{
+		lastDelay = getTick;
+
+		blinkStep++;
+
+		blinkStep = (blinkStep >= LED_SCHEME_LEN) ? 0 : blinkStep;
+
+		uint8_t blinkState = ledScheme[ledMode][blinkStep];
+
+		for( uint8_t k = 0; k < LED_NUMBER; k++)
+		{
+			HAL_GPIO_WritePin(GPIOD, ledPin[k], SET_LED_STATE(blinkState, k));
+
+		}
+	 }
+}
 /* USER CODE END 0 */
 
 /**
@@ -109,54 +166,17 @@ int main(void)
 
   while (1)
   {
-
-	  if (pwrLed == 0)
-	  {
-		  if (delayPass >= switchDelay)
-		  {
-			  delayPass = 0;
-			  	  for( uint8_t k = 0; k < 4; k++)
-			  	  {
-			  			HAL_GPIO_TogglePin(GPIOD, ledPin[k]);
-			  			HAL_Delay(50);
-			  	  }
-		  }
-
-		  // regulation button state
-		  upCheckBtn = HAL_GPIO_ReadPin(GPIOC, UP_BTN_Pin) == GPIO_PIN_RESET;
-		  downCheckBtn = HAL_GPIO_ReadPin(GPIOC, DOWN_BTN_Pin) == GPIO_PIN_RESET;
-
-	  	  if(upCheckBtn && !saveUpBtnState)
-	  	  {
-	 	  		 if(switchDelay < LED_DELAY_MIN)
-	 	  			  switchDelay = LED_DELAY_MIN;
-	 	  		 else
-	 	  		  switchDelay-= LED_DELAY_SWITCH;
-
-	 	  }
-	 	  if(downCheckBtn && !saveDownBtnState)
-	 	  {
-	 	  		  if(switchDelay > LED_DELAY_MAX)
-	 	  			  switchDelay = LED_DELAY_MAX;
-	 	  		  else
-	 	  		  switchDelay+= LED_DELAY_SWITCH;
-	 	  }
-	 	  // save state for speed regulation by each press
-	 	  saveUpBtnState = upCheckBtn;
-	 	  saveDownBtnState = downCheckBtn;
-	 	  HAL_Delay(50);
-	 	  delayPass += 100;
-
-	  }
+	  if (ledState)
+		  blinkLed();
 	  else
 	  {
-		  for(uint8_t  i = 0; i < 4; i++) // turn off led light by interrupt
+		  /* turn off led light by interrupt */
+		  for(uint8_t  i = 0; i < LED_NUMBER; i++)
 			  {
 				  HAL_GPIO_WritePin(GPIOD, ledPin[i], GPIO_PIN_RESET);
-
+				  HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFI);
 			  }
 	  }
-
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -220,9 +240,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, LED_GREEN_Pin|LED_ORANGE_Pin|LED_RED_Pin|LED_BLUE_Pin, GPIO_PIN_SET);
 
-  /*Configure GPIO pins : PWR_INT_BTN_Pin INT_BTN_Pin */
-  GPIO_InitStruct.Pin = PWR_INT_BTN_Pin|INT_BTN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  /*Configure GPIO pins : BLUE_BTN_Pin SWT2_BTN_Pin */
+  GPIO_InitStruct.Pin = BLUE_BTN_Pin|SWT2_BTN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
@@ -233,15 +253,18 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : UP_BTN_Pin DOWN_BTN_Pin */
-  GPIO_InitStruct.Pin = UP_BTN_Pin|DOWN_BTN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  /*Configure GPIO pins : SWT4_BTN_Pin SWT5_BTN_Pin SWT3_BTN_Pin SWT1_BTN_Pin */
+  GPIO_InitStruct.Pin = SWT4_BTN_Pin|SWT5_BTN_Pin|SWT3_BTN_Pin|SWT1_BTN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
   HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
 
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
