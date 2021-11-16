@@ -60,13 +60,11 @@ TIM_HandleTypeDef htim8;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-
-
 uint32_t tempValues[ADC_BUF_SIZE]; // adc temperature measurements
 int32_t externalSensorTemp = 0; // final external sensor voltage
 const uint16_t ledPin[NUMBER_OF_LEDS] = {GPIO_PIN_12, GPIO_PIN_13, GPIO_PIN_14, GPIO_PIN_15};
-/* USER CODE END PV */
 
+/* USER CODE END PV */
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -77,8 +75,11 @@ static void MX_TIM8_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-static void adcTemperature(void);
-static void transimtBtnLed(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, char btnStrOn[32], char btnStrOff[32]);
+static void transmitLedStatus(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, char btnStrOn[32], char btnStrOff[32]);
+static void receiveCommand(void);
+static void transmitTemperature(int32_t temperature);
+static int32_t adcVoltToTemp(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -89,52 +90,60 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	//Reloading Timer4 every 5 seconds
 	if (htim == &htim4 )
 	{
-		static char tempStr[128];
-
-		HAL_TIM_Base_Start(&htim8); //Starting Timer8 for ADC's DMA circular reading using Timer4 interrupt
+		/*Starting Timer8 for ADC's DMA circular reading using Timer4 interrupt */
+		HAL_TIM_Base_Start(&htim8);
 		HAL_ADC_Start_DMA(&hadc1, (uint32_t *)tempValues, ADC_BUF_SIZE);
-
-		snprintf(tempStr, sizeof(tempStr), "Temperature: %d.%d C\r\n", (int)(externalSensorTemp / 10), (int)(externalSensorTemp % 10));
-
-		HAL_UART_Transmit(&huart3, (uint8_t*) tempStr, strlen(tempStr), 10);
-
-
 	}
 	// Pooling UART using Timer3 with secondary priority every 0.02 seconds
 	if (htim == &htim3 )
 	{
-		char rcvBuf;
+		receiveCommand();
+	}
+}
 
-		HAL_StatusTypeDef result = HAL_UART_Receive(&huart3, (uint8_t*)&rcvBuf, 1, 10);
+static void receiveCommand(void)
+{
+	char rcvBuf;
 
-		if (result == HAL_OK)
+	HAL_StatusTypeDef result = HAL_UART_Receive(&huart3, (uint8_t*)&rcvBuf, 1, 10);
+
+	if (result == HAL_OK)
+	{
+		switch (rcvBuf)
 		{
-			switch (rcvBuf)
-			{
-			case '1':
-				transimtBtnLed(GPIOD, ledPin[2], "Red LED is On\r\n", "Red LED is Off\r\n");
-				break;
-			case '2':
-				transimtBtnLed(GPIOD, ledPin[3], "Blue LED is On\r\n", "Blue LED is Off\r\n");
-				break;
-			case '3':
-				transimtBtnLed(GPIOD, ledPin[0], "Green LED is On\r\n", "Green LED is Off\r\n");
-				break;
-			case '4':
-				transimtBtnLed(GPIOD, ledPin[1], "Orange LED is On\r\n", "Orange LED is Off\r\n");
-				break;
-			default:
-				HAL_UART_Transmit(&huart3, (uint8_t*) "Unrecognized key\r\n", 15 + 2, 10);
-				break;
-			}
+		case '1':
+			transmitLedStatus(GPIOD, ledPin[2], "Red LED is On\r\n", "Red LED is Off\r\n");
+			break;
+		case '2':
+			transmitLedStatus(GPIOD, ledPin[3], "Blue LED is On\r\n", "Blue LED is Off\r\n");
+			break;
+		case '3':
+			transmitLedStatus(GPIOD, ledPin[0], "Green LED is On\r\n", "Green LED is Off\r\n");
+			break;
+		case '4':
+			transmitLedStatus(GPIOD, ledPin[1], "Orange LED is On\r\n", "Orange LED is Off\r\n");
+			break;
+		default:
+			HAL_UART_Transmit(&huart3, (uint8_t*) "Unrecognized key\r\n", 15 + 2, 10);
+			break;
 		}
 	}
 }
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-	adcTemperature();
+
+	transmitTemperature(adcVoltToTemp());
+
 	HAL_TIM_Base_Stop(&htim8);
+}
+
+static void transmitTemperature(int32_t temperature)
+{
+	static char tempStr[128];
+
+	snprintf(tempStr, sizeof(tempStr), "Temperature: %d.%d C\r\n", (int)(externalSensorTemp / 10), (int)(externalSensorTemp % 10));
+	HAL_UART_Transmit(&huart3, (uint8_t*) tempStr, strlen(tempStr), 10);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -142,16 +151,16 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	switch (GPIO_Pin)
 	{
 	case BTN_LEFT_Pin:
-		transimtBtnLed(GPIOD, ledPin[1], "Orange LED is On\r\n", "Orange LED is Off\r\n");
+		transmitLedStatus(GPIOD, ledPin[1], "Orange LED is On\r\n", "Orange LED is Off\r\n");
 		break;
 	case BTN_DOWN_Pin:
-		transimtBtnLed(GPIOD, ledPin[2], "Red LED is On\r\n", "Red LED is Off\r\n");
+		transmitLedStatus(GPIOD, ledPin[2], "Red LED is On\r\n", "Red LED is Off\r\n");
 		break;
 	case BTN_RIGHT_Pin:
-		transimtBtnLed(GPIOD, ledPin[3], "Blue LED is On\r\n", "Blue LED is Off\r\n");
+		transmitLedStatus(GPIOD, ledPin[3], "Blue LED is On\r\n", "Blue LED is Off\r\n");
 		break;
 	case BTN_UP_Pin:
-		transimtBtnLed(GPIOD, ledPin[0], "Green LED is On\r\n", "Green LED is Off\r\n");
+		transmitLedStatus(GPIOD, ledPin[0], "Green LED is On\r\n", "Green LED is Off\r\n");
 		break;
 	case BTN_CENTER_Pin:
 		HAL_UART_Transmit(&huart3, (uint8_t*) "Unrecognized button\r\n", 19 + 2, 10);
@@ -159,30 +168,23 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 }
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-
-}
-
-void adcTemperature(void)
+static int32_t adcVoltToTemp(void)
 {
 	uint16_t *sensBuffer = (uint16_t*)tempValues;
 
 	for (uint8_t i = 0; i < ADC_AVERAGE; i++)
 	{
-
 		externalSensorTemp += *sensBuffer++;
-
 	}
 
-	externalSensorTemp = (externalSensorTemp * BRD_VOLTAGE / ADC_AVERAGE) / 4096;
+	externalSensorTemp = (externalSensorTemp * BRD_VOLTAGE / ADC_AVERAGE) >> 12;
 	externalSensorTemp = (-externalSensorTemp * 100) / 200 + 980 ;
+
+	return externalSensorTemp;
 }
 
-void transimtBtnLed(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, char btnStrOn[32], char btnStrOff[32] )
+static void transmitLedStatus(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, char btnStrOn[32], char btnStrOff[32] )
 {
-
-
 	if (HAL_GPIO_ReadPin(GPIOx, GPIO_Pin) == GPIO_PIN_RESET)
 	{
 		HAL_UART_Transmit(&huart3, (uint8_t*) btnStrOn,  strlen(btnStrOn), 10);
