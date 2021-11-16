@@ -27,6 +27,12 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum ledOutput {
+	LED_CH_1 = 1,
+	LED_CH_2,
+	LED_CH_3,
+	LED_CH_4
+} ledOutput;
 
 /* USER CODE END PTD */
 
@@ -42,6 +48,7 @@
 /* But our case is not similar, check config file to see RCC.APB1Freq_Value=8000000  */
 #define CALC_TIM_PERIOD(b) (((BASE_CLOCK_FREQ) / (b)) - 1 )
 #define CALC_PULSE_LENGTH(a,b) ( (((a) * (b)) / 100) )
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,7 +61,7 @@ TIM_HandleTypeDef htim4;
 
 /* USER CODE BEGIN PV */
 volatile int32_t signalFrequency = 25000;
-volatile uint8_t signalOutput = 1;
+volatile ledOutput signalOutput = LED_CH_1;
 volatile int16_t dcyclePWM = 25;	/* 25% duty cycle */
 int32_t timPeriod = 800;
 int32_t pulseLength = 0;
@@ -66,7 +73,10 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
-void Refresh_Leds();
+static void setDutyCycle(void);
+static void setFrequency(void);
+static void changeChannel(uint8_t channel, int32_t pulseLegth);
+static void setTimPeriod(int32_t frequency, int16_t dutyCycle);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -78,79 +88,92 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	if(GPIO_Pin == GPIO_PIN_0)
 	{
 		if (signalOutput > 4)
-			signalOutput = 1;
+			signalOutput = LED_CH_1;
 		else
 			signalOutput++;
-		Refresh_Leds();
-
+		changeChannel(signalOutput, pulseLength);
 	}
 	else
 	if(GPIO_Pin == GPIO_PIN_11)
 	{
-
 		dcyclePWM+= DCYCLE_SW_STEP;
-		Refresh_Leds();
+		setDutyCycle();
+		changeChannel(signalOutput, pulseLength);
 	}
 	else
 	if(GPIO_Pin == GPIO_PIN_9)
 	{
 		dcyclePWM-= DCYCLE_SW_STEP;
-		Refresh_Leds();
+		setDutyCycle();
+		changeChannel(signalOutput, pulseLength);
 	}
 	else
 	if(GPIO_Pin == GPIO_PIN_6)
 	{
 		signalFrequency+= SIGNAL_FREQ_STEP;
-		Refresh_Leds();
+		setFrequency();
+		changeChannel(signalOutput, pulseLength);
 	}
 	else
 	if(GPIO_Pin == GPIO_PIN_8)
 	{
 		signalFrequency-= SIGNAL_FREQ_STEP;
-		Refresh_Leds();
+		setFrequency();
+		changeChannel(signalOutput, pulseLength);
 	}
-
-
 }
-void Refresh_Leds()
+
+static void setDutyCycle(void)
 {
-
-	if(signalFrequency > SIGNAL_FREQ_MAX)
-		signalFrequency = SIGNAL_FREQ_MAX;
-	else if(signalFrequency < SIGNAL_FREQ_MIN)
-		signalFrequency = SIGNAL_FREQ_MIN;
-
 	if (dcyclePWM > 100)
 		dcyclePWM = 100;
 	else if(dcyclePWM < 0)
 		dcyclePWM = 0;
 
-	timPeriod =  CALC_TIM_PERIOD(signalFrequency);
-	pulseLength =  CALC_PULSE_LENGTH(timPeriod, dcyclePWM);
-	TIM4->ARR = timPeriod;
+	setTimPeriod(signalFrequency, dcyclePWM);
+}
 
-	if (signalOutput == 1)
+static void setTimPeriod(int32_t frequency, int16_t dutyCycle)
+{
+	timPeriod =  CALC_TIM_PERIOD(signalFrequency);
+	TIM4->ARR = timPeriod;
+	pulseLength =  CALC_PULSE_LENGTH(timPeriod, dcyclePWM);
+}
+
+static void setFrequency(void)
+{
+	if(signalFrequency > SIGNAL_FREQ_MAX)
+		signalFrequency = SIGNAL_FREQ_MAX;
+	else if(signalFrequency < SIGNAL_FREQ_MIN)
+		signalFrequency = SIGNAL_FREQ_MIN;
+
+	setTimPeriod(signalFrequency, dcyclePWM);
+}
+
+static void changeChannel(uint8_t channel, int32_t pulseLegth )
+{
+	if (channel == LED_CH_1)
 	{
 		TIM4->CCR1 = pulseLength;
 		TIM4->CCR2 = 0;
 		TIM4->CCR3 = 0;
 		TIM4->CCR4 = 0;
 	}
-	else if (signalOutput == 2)
+	else if (channel == LED_CH_2)
 	{
 		TIM4->CCR1 = 0;
 		TIM4->CCR2 = pulseLength;
 		TIM4->CCR3 = 0;
 		TIM4->CCR4 = 0;
 	}
-	else if (signalOutput == 3)
+	else if (channel == LED_CH_3)
 	{
 		TIM4->CCR1 = 0;
 		TIM4->CCR2 = 0;
 		TIM4->CCR3 = pulseLength;
 		TIM4->CCR4 = 0;
 	}
-	else if (signalOutput == 4)
+	else if (channel == LED_CH_4)
 	{
 		TIM4->CCR1 = 0;
 		TIM4->CCR2 = 0;
@@ -164,9 +187,10 @@ void Refresh_Leds()
 		TIM4->CCR3 = 0;
 		TIM4->CCR4 = 0;
 	}
+}
 
 
-	}
+
 /* USER CODE END 0 */
 
 /**
@@ -203,7 +227,9 @@ int main(void)
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_3);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
-  Refresh_Leds();
+  setDutyCycle();
+  setFrequency();
+  changeChannel(signalOutput, pulseLength);
 
   /* USER CODE END 2 */
 
