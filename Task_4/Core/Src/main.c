@@ -26,6 +26,15 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+typedef enum warningState
+{
+	FADE_OUT = 0,
+	ROUND_HOUSE ,
+	FAST_PACE,
+	COCKED_PISTOL
+
+} warningState;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -72,8 +81,6 @@ int32_t potentiometerVolt = 0;  // final potentiometer voltage
 int32_t externalSensorTemp = 0; // final external sensor voltage
 int32_t internalSensorTemp = 0; // final internal sensor voltage
 
-volatile uint32_t timerVal = 0; // start of the TIM14 timer
-uint8_t prevWrnState = 0;
 
 /* USER CODE END PV */
 
@@ -86,15 +93,32 @@ static void MX_TIM8_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM14_Init(void);
 /* USER CODE BEGIN PFP */
-static void alarmLed();
-void chkWrnLimits();
-void pwmPeriod();
+static void AlarmLedStateUpdate(warningState state);
+static void chkWrnLimits(void);
+static void LedIntensityUpdate(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	if (htim == &htim14)
+	{
+		warningState state = potAlarmFlag + extSensorAlarmFlag + intSensorAlarmFlag;
+
+		if (state == ROUND_HOUSE)
+			TIM14->ARR = 500;
+		else if (state == FAST_PACE)
+			TIM14->ARR = 200;
+		else if (state == COCKED_PISTOL)
+			TIM14->ARR = 100;
+
+		AlarmLedStateUpdate(state); // turn on led blink to alarm about count of warnings
+	}
+}
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
@@ -124,31 +148,31 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 	internalSensorTemp = ((averagedVoltages[2] - 760) * 100  / 25) + 250;
 
 	chkWrnLimits(); // count number of warnings
-	pwmPeriod(); // set PWM period on each LED
+	LedIntensityUpdate(); // set PWM period on each LED
 
 }
 
 
-void chkWrnLimits()
+void chkWrnLimits(void)
 {
 
 	if(potentiometerVolt > POTENTIOMETER_LIMIT)
-		potAlarmFlag = 1;
+		potAlarmFlag = ROUND_HOUSE;
 	else
-		potAlarmFlag = 0;
+		potAlarmFlag = FADE_OUT;
 	if(externalSensorTemp > TEMPERATURE_LIMIT)
-		extSensorAlarmFlag = 1;
+		extSensorAlarmFlag = ROUND_HOUSE;
 	else
-		extSensorAlarmFlag = 0;
+		extSensorAlarmFlag = FADE_OUT;
 	if(internalSensorTemp > TEMPERATURE_LIMIT)
-		intSensorAlarmFlag = 1;
+		intSensorAlarmFlag = ROUND_HOUSE;
 	else
-		intSensorAlarmFlag = 0;
+		intSensorAlarmFlag =FADE_OUT;
 	return;
 
 }
 
-void pwmPeriod()
+void LedIntensityUpdate(void)
 {
 	int32_t pulseLength;
 
@@ -166,46 +190,28 @@ void pwmPeriod()
 
 
 
-void alarmLed()
+void AlarmLedStateUpdate(warningState state)
 {
-
-	uint8_t wrnVal = potAlarmFlag + extSensorAlarmFlag + intSensorAlarmFlag;
-
-	if(wrnVal == 0)
+	if(state == FADE_OUT)
 	{
 		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_RESET);
 	}
-	else if(prevWrnState == 0)
-	{
 
-		timerVal = __HAL_TIM_GET_COUNTER(&htim14);
-		HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
-	}
-	else if(wrnVal == 1)
+	else if(state == ROUND_HOUSE)
 	{
-
-		if (__HAL_TIM_GET_COUNTER(&htim14) - timerVal >= 510)
-		{
-			timerVal = __HAL_TIM_GET_COUNTER(&htim14);
-			HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-		}
+		HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
 	}
-	else if (wrnVal == 2)
+
+	else if (state == FAST_PACE)
 	{
+		HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
 
-		if (__HAL_TIM_GET_COUNTER(&htim14) - timerVal >= 200)
-		{
-			timerVal = __HAL_TIM_GET_COUNTER(&htim14);
-			HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-		}
 	}
-	else if (__HAL_TIM_GET_COUNTER(&htim14) - timerVal >= 100)
+	else if (state == COCKED_PISTOL)
 	{
-			timerVal = __HAL_TIM_GET_COUNTER(&htim14);
-			HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
-	}
-	prevWrnState = wrnVal;
+		HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_14);
 
+	}
 }
 /* USER CODE END 0 */
 
@@ -247,8 +253,8 @@ int main(void)
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4);
   HAL_TIM_Base_Start(&htim8);
-  HAL_TIM_Base_Start(&htim14);
-  timerVal = __HAL_TIM_GET_COUNTER(&htim14);
+  HAL_TIM_Base_Start_IT(&htim14);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -258,8 +264,6 @@ int main(void)
 
   while (1)
   {
-
-	alarmLed(); // turn on led blink to alarm about count of warnings
 
     /* USER CODE END WHILE */
 
