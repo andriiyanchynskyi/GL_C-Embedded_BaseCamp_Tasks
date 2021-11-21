@@ -51,8 +51,8 @@ TIM_HandleTypeDef htim3;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-uint8_t delayTime = 0;
-uint8_t dutyCycle = 0;
+uint8_t ledOnTime = 0;
+uint8_t ledOffTime = 0;
 uint8_t sleepMode = 0;
 uint8_t pwmChannelsState = 0;
 uint16_t pwmFrequency = 100;
@@ -69,8 +69,8 @@ static void MX_USART3_UART_Init(void);
 static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
-static void adjustDutyCycle(void);
-static void adjustDelayTime(void);
+static void adjustledOffTime(void);
+static void adjustledOnTime(void);
 static void adjustPwmFrequency(void);
 static void toggleAllPwmOutputs(void);
 static void toggleSleepMode(void);
@@ -94,16 +94,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			switch (rcvBuf)
 			{
 			case '1':
-				adjustDutyCycle();
+				adjustledOffTime();
 				break;
 			case '3':
-				adjustDutyCycle();
+				adjustledOffTime();
 				break;
 			case '4':
-				adjustDelayTime();
+				adjustledOnTime();
 				break;
 			case '6':
-				adjustDelayTime();
+				adjustledOnTime();
 				break;
 			case '7':
 				adjustPwmFrequency();
@@ -126,43 +126,43 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
-void adjustDutyCycle(void)
+static void adjustledOffTime(void)
 {
 	if (pwmChannelsState == 1)
 	{
 		if(rcvBuf == '1')
 		{
-			dutyCycle = (dutyCycle > 0) ? (dutyCycle - 1) : dutyCycle;
-			dutyCycle = (dutyCycle > (100 - delayTime)) ? (100 - delayTime) : dutyCycle;
+			ledOffTime = (ledOffTime > 0) ? (ledOffTime - 1) : ledOffTime;
+			ledOffTime = (ledOffTime > (100 - ledOnTime)) ? (100 - ledOnTime) : ledOffTime;
 
 		}
 		else if (rcvBuf == '3')
 		{
-			dutyCycle = (dutyCycle < 100) ? (dutyCycle + 1) : dutyCycle;
-			dutyCycle = (dutyCycle > (100 - delayTime)) ? (100 - delayTime) : dutyCycle;
+			ledOffTime = (ledOffTime < 100) ? (ledOffTime + 1) : ledOffTime;
+			ledOffTime = (ledOffTime > (100 - ledOnTime)) ? (100 - ledOnTime) : ledOffTime;
 		}
 
-	LED_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, delayTime, dutyCycle);
+	PWM_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime);
 	}
 }
 
-static void adjustDelayTime(void)
+static void adjustledOnTime(void)
 {
 	if (pwmChannelsState == 1)
 	{
 		if(rcvBuf == '4')
 		{
-			delayTime = (delayTime > 0) ? (delayTime - 1) : delayTime;
-			delayTime = (delayTime > (100 - dutyCycle)) ? (100 - dutyCycle) : delayTime;
+			ledOnTime = (ledOnTime > 0) ? (ledOnTime - 1) : ledOnTime;
+			ledOnTime = (ledOnTime > (100 - ledOffTime)) ? (100 - ledOffTime) : ledOnTime;
 
 		}
 		else if (rcvBuf == '6')
 		{
-			delayTime = (delayTime < 100) ? (delayTime + 1) : delayTime;
-			delayTime = (delayTime > (100 - dutyCycle)) ? (100 - dutyCycle) : delayTime;
+			ledOnTime = (ledOnTime < 100) ? (ledOnTime + 1) : ledOnTime;
+			ledOnTime = (ledOnTime > (100 - ledOffTime)) ? (100 - ledOffTime) : ledOnTime;
 		}
 
-	LED_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, delayTime, dutyCycle);
+	PWM_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime);
 	}
 }
 
@@ -187,12 +187,12 @@ static void toggleAllPwmOutputs(void)
 	if(pwmChannelsState == 0)
 	{
 		pwmChannelsState = 1;
-		LED_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, delayTime, dutyCycle);
+		PWM_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime);
 	}
 	else
 	{
 		pwmChannelsState = 0;
-		LED_Register_All_Off(&hi2c1, PCA9685_PWM_LED_ID);
+		PWM_Register_All_Off(&hi2c1, PCA9685_PWM_LED_ID);
 	}
 
 }
@@ -201,7 +201,7 @@ static void toggleSleepMode(void)
 {
 	sleepMode = !sleepMode;
 
-	LED_Sleep_State(&hi2c1, PCA9685_PWM_LED_ID, sleepMode);
+	PWM_Sleep_State(&hi2c1, PCA9685_PWM_LED_ID, sleepMode);
 
 }
 
@@ -221,7 +221,7 @@ static void receiveUartStatus(void)
 	transmitUartMessage("Duty cycle: Decrease/Increase 1/3 | Delay time: Decrease/Increase 4/6 | PWM Frequency: Decrease/Increase 7/9 |\r\nToggle all channels: 2 | Toggle sleep mode: 5\r\n");
 
 	snprintf(tempStr, sizeof(tempStr), "\r\nDuty Cycle: %u %%\r\nDelay time: %u %%\r\nPWM Frequency: %u Hz\r\nAll channels: %u\r\nSleep mode: %u\r\n",
-	(unsigned int)(dutyCycle), (unsigned int)(delayTime), (unsigned int)(pwmFrequency),(unsigned int)(pwmChannelsState),(unsigned int)(sleepMode));
+	(unsigned int)(ledOffTime), (unsigned int)(ledOnTime), (unsigned int)(pwmFrequency),(unsigned int)(pwmChannelsState),(unsigned int)(sleepMode));
 
 	transmitUartMessage(tempStr);
 }
@@ -266,7 +266,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
-  PWM_LED_Init(&hi2c1, PCA9685_PWM_LED_ID);
+  PWM_LED_Init(&hi2c1, PCA9685_PWM_LED_ID, GPIOB, GPIO_PIN_7);
   HAL_TIM_Base_Start_IT(&htim3);
   receiveUartStatus();
   /* USER CODE END 2 */

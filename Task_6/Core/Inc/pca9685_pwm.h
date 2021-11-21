@@ -12,6 +12,13 @@
 #include <stdlib.h>
 #include "stm32f4xx_hal.h"
 
+/* Typedefs ------------------------------------------------------------------*/
+typedef enum
+{
+	NORMAL_MODE,
+	LOW_POWER_MODE
+} sleep_state;
+
 /* Defines  ------------------------------------------------------------------*/
 #define MODE1_LED_REG		0u
 #define MODE2_LED_REG		1u
@@ -41,10 +48,10 @@
 #define MODE2_LED_OUTNE0	(1u << 0)
 
 /* Exported functions prototypes ---------------------------------------------*/
-void PWM_LED_Init(I2C_HandleTypeDef *hi2c, uint8_t devId);
-void LED_Register_All_Set(I2C_HandleTypeDef *hi2c, uint8_t devId, uint16_t delayTime, uint16_t dutyCycle);
-void LED_Register_All_Off(I2C_HandleTypeDef *hi2c, uint8_t devId);
-void LED_Sleep_State(I2C_HandleTypeDef *hi2c, uint8_t devId, uint8_t state);
-void PWM_Frequency_Set(I2C_HandleTypeDef *hi2c, uint8_t devId, uint16_t frequency);
+void PWM_LED_Init(I2C_HandleTypeDef *hi2c, uint8_t devAddress, GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
+void PWM_Register_All_Set(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint16_t ledOnTime, uint16_t ledOffTime);
+void PWM_Register_All_Off(I2C_HandleTypeDef *hi2c, uint8_t devAddress);
+void PWM_Sleep_State(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint8_t state);
+void PWM_Frequency_Set(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint16_t frequency);
 
 #endif /* INC_PCA9685_PWM_H_ */
