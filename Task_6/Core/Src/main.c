@@ -29,7 +29,11 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+typedef enum
+{
+	DOWN,
+	UP
+} adjust;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -53,6 +57,7 @@ UART_HandleTypeDef huart3;
 /* USER CODE BEGIN PV */
 uint8_t ledOnTime = 0;
 uint8_t ledOffTime = 0;
+uint8_t ledChannel = 0;
 uint8_t sleepMode = 0;
 uint8_t pwmChannelsState = 0;
 uint16_t pwmFrequency = 100;
@@ -69,13 +74,14 @@ static void MX_USART3_UART_Init(void);
 static void MX_TIM3_Init(void);
 
 /* USER CODE BEGIN PFP */
-static void adjustledOffTime(void);
-static void adjustledOnTime(void);
-static void adjustPwmFrequency(void);
+static void adjustledOffTime(adjust offTime);
+static void adjustledOnTime(adjust onTime);
+static void adjustPwmFrequency(adjust freq);
 static void toggleAllPwmOutputs(void);
 static void toggleSleepMode(void);
+static void disablePwmOutput(uint8_t ledChannel);
 static void receiveUartStatus(void);
-static void transmitUartMessage(char terminalMessage[128]);
+static void transmitUartMessage(char terminalMessage[256]);
 
 /* USER CODE END PFP */
 
@@ -94,28 +100,37 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 			switch (rcvBuf)
 			{
 			case '1':
-				adjustledOffTime();
+				adjustledOffTime(DOWN);
 				break;
 			case '3':
-				adjustledOffTime();
+				adjustledOffTime(UP);
 				break;
 			case '4':
-				adjustledOnTime();
+				adjustledOnTime(DOWN);
 				break;
 			case '6':
-				adjustledOnTime();
+				adjustledOnTime(UP);
 				break;
 			case '7':
-				adjustPwmFrequency();
+				adjustPwmFrequency(DOWN);
 				break;
 			case '9':
-				adjustPwmFrequency();
+				adjustPwmFrequency(UP);
 				break;
 			case '2':
 				toggleAllPwmOutputs();
 				break;
 			case '5':
 				toggleSleepMode();
+				break;
+			case '8':
+				disablePwmOutput(ledChannel);
+				break;
+			case '+':
+				ledChannel = (ledChannel < 16) ? (ledChannel + 1) : ledChannel;
+				break;
+			case '-':
+				ledChannel =( ledChannel < 0) ? ledChannel  : (ledChannel - 1) ;
 				break;
 			default:
 				HAL_UART_Transmit(&huart3, (uint8_t*) "Unrecognized key\r\n", 15 + 2, 10);
@@ -126,54 +141,57 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 }
 
-static void adjustledOffTime(void)
+static void adjustledOffTime(adjust offTime)
 {
+
+	if(offTime == DOWN)
+	{
+		ledOffTime = (ledOffTime > 0) ? (ledOffTime - 1) : ledOffTime;
+		ledOffTime = (ledOffTime > (100 - ledOnTime)) ? (100 - ledOnTime) : ledOffTime;
+
+	}
+	else if (offTime == UP)
+	{
+		ledOffTime = (ledOffTime < 100) ? (ledOffTime + 1) : ledOffTime;
+		ledOffTime = (ledOffTime > (100 - ledOnTime)) ? (100 - ledOnTime) : ledOffTime;
+	}
+
 	if (pwmChannelsState == 1)
 	{
-		if(rcvBuf == '1')
-		{
-			ledOffTime = (ledOffTime > 0) ? (ledOffTime - 1) : ledOffTime;
-			ledOffTime = (ledOffTime > (100 - ledOnTime)) ? (100 - ledOnTime) : ledOffTime;
-
-		}
-		else if (rcvBuf == '3')
-		{
-			ledOffTime = (ledOffTime < 100) ? (ledOffTime + 1) : ledOffTime;
-			ledOffTime = (ledOffTime > (100 - ledOnTime)) ? (100 - ledOnTime) : ledOffTime;
-		}
-
-	PWM_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime);
+		PWM_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime);
 	}
+	else
+		PWM_Register_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime, ledChannel);
 }
 
-static void adjustledOnTime(void)
+static void adjustledOnTime(adjust onTime)
 {
+	if(onTime == DOWN)
+	{
+		ledOnTime = (ledOnTime > 0) ? (ledOnTime - 1) : ledOnTime;
+		ledOnTime = (ledOnTime > (100 - ledOffTime)) ? (100 - ledOffTime) : ledOnTime;
+	}
+	else if (onTime == UP)
+	{
+		ledOnTime = (ledOnTime < 100) ? (ledOnTime + 1) : ledOnTime;
+		ledOnTime = (ledOnTime > (100 - ledOffTime)) ? (100 - ledOffTime) : ledOnTime;
+	}
 	if (pwmChannelsState == 1)
 	{
-		if(rcvBuf == '4')
-		{
-			ledOnTime = (ledOnTime > 0) ? (ledOnTime - 1) : ledOnTime;
-			ledOnTime = (ledOnTime > (100 - ledOffTime)) ? (100 - ledOffTime) : ledOnTime;
-
-		}
-		else if (rcvBuf == '6')
-		{
-			ledOnTime = (ledOnTime < 100) ? (ledOnTime + 1) : ledOnTime;
-			ledOnTime = (ledOnTime > (100 - ledOffTime)) ? (100 - ledOffTime) : ledOnTime;
-		}
-
-	PWM_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime);
+		PWM_Register_All_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime);
 	}
+	else
+		PWM_Register_Set(&hi2c1, PCA9685_PWM_LED_ID, ledOnTime, ledOffTime, ledChannel);
 }
 
-static void adjustPwmFrequency(void)
+static void adjustPwmFrequency(adjust freq)
 {
 
-	if(rcvBuf == '7')
+	if(freq == DOWN)
 	{
 		pwmFrequency = (pwmFrequency > 24) ? (pwmFrequency - 1) : pwmFrequency;
 	}
-	else if (rcvBuf == '9')
+	else if (freq == UP)
 	{
 		pwmFrequency = (pwmFrequency < 1526) ? (pwmFrequency + 1) : pwmFrequency;
 	}
@@ -197,6 +215,11 @@ static void toggleAllPwmOutputs(void)
 
 }
 
+static void disablePwmOutput(uint8_t ledChannel)
+{
+	PWM_Register_Off(&hi2c1, PCA9685_PWM_LED_ID, ledChannel);
+}
+
 static void toggleSleepMode(void)
 {
 	sleepMode = !sleepMode;
@@ -213,20 +236,21 @@ static void receiveUartStatus(void)
         the ASCII character for the letter J, value 0x4A.
         Esc[2J - erase terminal display
  	*/
-	static char tempStr[128];
+	static char tempStr[256];
 	uint8_t  eraseScreenArr[5] ={ 0x1B, 0x5B, 0x32, 0x4A };
 
 	HAL_UART_Transmit(&huart3, (uint8_t*) &eraseScreenArr, 4, 10);
 
-	transmitUartMessage("Duty cycle: Decrease/Increase 1/3 | Delay time: Decrease/Increase 4/6 | PWM Frequency: Decrease/Increase 7/9 |\r\nToggle all channels: 2 | Toggle sleep mode: 5\r\n");
+	transmitUartMessage("Duty cycle: Decrease/Increase 1/3 | Delay time: Decrease/Increase 4/6 | PWM Frequency: Decrease/Increase 7/9 | Specific Channel: Decrease/Increase -/+ |\r\n"
+			"Toggle all channels: 2 | Toggle sleep mode: 5 | Disable specific channel: 8\r\n");
 
-	snprintf(tempStr, sizeof(tempStr), "\r\nDuty Cycle: %u %%\r\nDelay time: %u %%\r\nPWM Frequency: %u Hz\r\nAll channels: %u\r\nSleep mode: %u\r\n",
-	(unsigned int)(ledOffTime), (unsigned int)(ledOnTime), (unsigned int)(pwmFrequency),(unsigned int)(pwmChannelsState),(unsigned int)(sleepMode));
+	snprintf(tempStr, sizeof(tempStr), "\r\nDuty Cycle: %u %%\r\nDelay: %u %%\r\nFrequency: %u Hz\r\nAll channels: %u\r\nSleep mode: %u\r\nChannel: %u\r\n",
+	(unsigned int)(ledOffTime), (unsigned int)(ledOnTime), (unsigned int)(pwmFrequency),(unsigned int)(pwmChannelsState),(unsigned int)(sleepMode),(unsigned int)(ledChannel));
 
 	transmitUartMessage(tempStr);
 }
 
-static void transmitUartMessage(char terminalMessage[128])
+static void transmitUartMessage(char terminalMessage[256])
 {
 	HAL_UART_Transmit(&huart3, (uint8_t*) terminalMessage,  strlen(terminalMessage), 10);
 }

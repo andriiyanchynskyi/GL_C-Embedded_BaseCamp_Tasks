@@ -9,12 +9,27 @@
 /* Includes ------------------------------------------------------------------*/
 #include "pca9685_pwm.h"
 
+/* Typedefs ------------------------------------------------------------------*/
+typedef struct
+{
+	uint32_t LEDn_ON;
+	uint32_t LEDn_OFF;
+} pwm_calc;
+
+typedef struct
+{
+	uint8_t LEDn_ON_L;
+	uint8_t LEDn_ON_H;
+	uint8_t LEDn_OFF_L;
+	uint8_t LEDn_OFF_H;
+} ch_reg_calc;
+
 /* Defines  ------------------------------------------------------------------*/
 #define INTERNAL_CLOCK_FREQ 25000000
 #define CLEAR_DATA 0x00
 
 /* Private macro -------------------------------------------------------------*/
-#define ALL_LED_REG_NUMBER 4
+#define LED_REG_NUMBER 4
 #define FREQUENCY_MIN 24
 #define FREQUENCY_MAX 1526
 #define PRE_SCALE_MIN 0xFF
@@ -24,8 +39,9 @@
 #define PWM_FREQUENCY(f) (int)(((INTERNAL_CLOCK_FREQ) / ((f) << 12)) - 1)
 
 /* Private variables ---------------------------------------------------------*/
-static uint8_t allLedArray[ALL_LED_REG_NUMBER] = { ALL_LED_ON_L, ALL_LED_ON_H, ALL_LED_OFF_L, ALL_LED_OFF_H };
+static uint8_t allLedArray[LED_REG_NUMBER] = { ALL_LED_ON_L, ALL_LED_ON_H, ALL_LED_OFF_L, ALL_LED_OFF_H };
 static uint8_t setData = CLEAR_DATA;
+
 /* Private user code ---------------------------------------------------------*/
 
 /**
@@ -38,6 +54,40 @@ static void PWM_Data_Transmit(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint8
 	HAL_I2C_Master_Transmit(hi2c, devAddress, (uint8_t*) &transmitBuf, 2, 1000);
 }
 
+/**
+ * This function calculates LED on time and LED off time values
+ */
+pwm_calc PWM_Calc_Output(uint16_t ledOnTime, uint16_t ledOffTime)
+{
+	pwm_calc pwm;
+
+	if(ledOnTime < 0)
+		pwm.LEDn_ON = 0;
+	else
+		pwm.LEDn_ON = (int)(ledOnTime << 12) / 100; // Time of delay * 4096 / 100
+
+	if(ledOffTime < 0)
+		pwm.LEDn_OFF = 0;
+	else
+		pwm.LEDn_OFF = LED_OFF_TIME(pwm.LEDn_ON, ledOffTime);
+
+	return pwm;
+}
+
+/**
+ * This function sets PWM LED L/H registers by number of channel
+ */
+ch_reg_calc PWM_Set_Channel(uint8_t ledChannel)
+{
+	ch_reg_calc reg;
+
+	reg.LEDn_ON_L  = (ledChannel << 2) + 6; // ledChannel * 4 + register definition offset
+	reg.LEDn_ON_H  = (ledChannel << 2) + 7;
+	reg.LEDn_OFF_L = (ledChannel << 2) + 8;
+	reg.LEDn_OFF_H = (ledChannel << 2) + 9;
+
+	return reg;
+}
 /**
  * @brief Initializes the PCA9685 PWM LED Controller
  * This function disables low power mode and enables OE (Output Enable Pin)
@@ -65,7 +115,7 @@ void PWM_LED_Init(I2C_HandleTypeDef *hi2c, uint8_t devAddress, GPIO_TypeDef* GPI
  */
 void PWM_Register_All_Off(I2C_HandleTypeDef *hi2c, uint8_t devAddress)
 {
-	for(uint8_t i = 0; i < ALL_LED_REG_NUMBER; i++)
+	for(uint8_t i = 0; i < LED_REG_NUMBER; i++)
 		PWM_Data_Transmit(hi2c, devAddress, allLedArray[i], CLEAR_DATA);
 }
 
@@ -103,23 +153,58 @@ void PWM_Sleep_State(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint8_t state)
  */
 void PWM_Register_All_Set(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint16_t ledOnTime, uint16_t ledOffTime)
 {
-	static uint32_t LED_ALL_ON;
-	static uint32_t LED_ALL_OFF;
+	pwm_calc pwm = PWM_Calc_Output(ledOnTime, ledOffTime);
+	uint32_t transmitBuf[LED_REG_NUMBER] = {(pwm.LEDn_ON & 0xFF),(pwm.LEDn_ON >> 8),(pwm.LEDn_OFF & 0xFF),(pwm.LEDn_OFF >> 8)}; // One byte mask and for ALL_LED_ON_L/ALL_LED_OFF_L
 
-	if(ledOnTime < 0)
-		LED_ALL_ON = 0;
-	else
-		LED_ALL_ON = (int)(ledOnTime << 12) / 100; // Time of delay * 4096 / 100
-
-	if(ledOffTime < 0)
-		LED_ALL_OFF = 0;
-	else
-		LED_ALL_OFF = LED_OFF_TIME(LED_ALL_ON, ledOffTime);
-
-	uint32_t transmitBuf[ALL_LED_REG_NUMBER] = {(LED_ALL_ON & 0xFF),(LED_ALL_ON >> 8),(LED_ALL_OFF & 0xFF),(LED_ALL_OFF >> 8)}; // One byte mask and for ALL_LED_ON_L/ALL_LED_OFF_L
-
-	for(uint8_t i = 0; i < ALL_LED_REG_NUMBER; i++)
+	for(uint8_t i = 0; i < LED_REG_NUMBER; i++)
 		PWM_Data_Transmit(hi2c, devAddress, allLedArray[i], transmitBuf[i]);
+}
+
+/**
+ * @brief  This function sets Duty Cycle and Delay time for specific LED register
+ * @param  hi2c I2Cn &handle
+ * @param  devAddress Developer address of the PWM LED controller
+ * @param  ledOnTime Time of the delay: 0 - 100 %
+ * @param  ledOffTime Duty cycle: 0 - 100 %
+ * @param  ledChannel Number of the PWM LED channel
+ * @retval None
+ */
+void PWM_Register_Set(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint16_t ledOnTime, uint16_t ledOffTime, uint8_t ledChannel)
+{
+	if (ledChannel < NUMBER_LED)
+	{
+		ch_reg_calc reg = PWM_Set_Channel(ledChannel);
+		uint8_t ledArray[LED_REG_NUMBER] =  { reg.LEDn_ON_L, reg.LEDn_ON_H, reg.LEDn_OFF_L, reg.LEDn_OFF_H };
+
+		pwm_calc pwm = PWM_Calc_Output(ledOnTime, ledOffTime);
+		uint32_t transmitBuf[LED_REG_NUMBER] = {(pwm.LEDn_ON & 0xFF),(pwm.LEDn_ON >> 8),(pwm.LEDn_OFF & 0xFF),(pwm.LEDn_OFF >> 8)};
+
+		for(uint8_t i = 0; i < LED_REG_NUMBER; i++)
+			PWM_Data_Transmit(hi2c, devAddress, ledArray[i], transmitBuf[i]);
+	}
+	else
+		return;
+}
+
+/**
+ * @brief  This function disables specific PWM LED register
+ * @param  hi2c I2Cn &handle
+ * @param  devAddress Developer address of the PWM LED controller
+ * @param  ledChannel Number of the PWM LED channel
+ * @retval None
+ */
+void PWM_Register_Off(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint8_t ledChannel)
+{
+	if (ledChannel < NUMBER_LED)
+	{
+		ch_reg_calc reg = PWM_Set_Channel(ledChannel);
+		uint8_t ledArray[LED_REG_NUMBER] =  { reg.LEDn_ON_L, reg.LEDn_ON_H, reg.LEDn_OFF_L, reg.LEDn_OFF_H };
+
+		for(uint8_t i = 0; i < LED_REG_NUMBER; i++)
+			PWM_Data_Transmit(hi2c, devAddress, ledArray[i], CLEAR_DATA);
+	}
+	else
+		return;
 }
 
 /**

@@ -51,6 +51,8 @@ typedef enum
 void PWM_LED_Init(I2C_HandleTypeDef *hi2c, uint8_t devAddress, GPIO_TypeDef* GPIOx, uint16_t GPIO_Pin);
 void PWM_Register_All_Set(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint16_t ledOnTime, uint16_t ledOffTime);
 void PWM_Register_All_Off(I2C_HandleTypeDef *hi2c, uint8_t devAddress);
+void PWM_Register_Set(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint16_t ledOnTime, uint16_t ledOffTime, uint8_t ledChannel);
+void PWM_Register_Off(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint8_t ledChannel);
 void PWM_Sleep_State(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint8_t state);
 void PWM_Frequency_Set(I2C_HandleTypeDef *hi2c, uint8_t devAddress, uint16_t frequency);
 
